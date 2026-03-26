@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <title>MSF Generator | Alpine.js</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root { --msf: #e11a22; --water: #b5d5d5; --land: #f3ece6; }
+        body { margin: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; background: #121212; color: #eee; overflow: hidden; }
+        .header { height: 50px; padding: 0 20px; background: #000; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--msf); }
+        .controls { background: #252525; padding: 10px 20px; display: flex; gap: 20px; align-items: center; border-bottom: 1px solid #444; font-size: 12px; }
+        #viewport { flex: 1; position: relative; background: #1a1a1a; display: flex; justify-content: center; align-items: center; }
+        #map-window { width: 1200px; height: 600px; background: var(--water); position: relative; overflow: hidden; flex-shrink: 0; }
+        svg { width: 100%; height: 100%; cursor: crosshair; }
+        .country { fill: var(--land); stroke: #999; stroke-width: 0.3px; cursor: pointer; }
+        .country.active { fill: var(--msf) !important; }
+        #msf-box { position: absolute; top: 20px; left: 20px; background: white; color: black; width: 280px; z-index: 100; border-left: 8px solid var(--msf); box-shadow: 5px 5px 15px rgba(0,0,0,0.2); }
+        .drag-bar { background: #f0f0f0; height: 18px; cursor: move; }
+        .label-wrap { position: absolute; transform: translate(-50%, -100%); z-index: 90; pointer-events: all; display: flex; flex-direction: column; align-items: center; }
+        .label-box { background: white; padding: 4px 10px; color: black; font-weight: 900; text-transform: uppercase; box-shadow: 2px 2px 8px rgba(0,0,0,0.2); cursor: move; outline: none; }
+        .url-field { margin-top: 4px; font-size: 9px; width: 100px; border: 1px solid #ddd; padding: 2px; }
+        button { padding: 6px 12px; background: #333; color: white; border: 1px solid #555; cursor: pointer; font-size: 11px; }
+        .btn-red { background: var(--msf); border: none; font-weight: bold; }
+    </style>
+</head>
+<body x-data="mapEditor()">
+
+<div class="header">
+    <div style="font-weight:900;">MSF KORT GENERATOR</div>
+    <button class="btn-red" @click="exportMap()">KOPIÉR HTML</button>
+</div>
+
+<div class="controls">
+    <button @click="zoom(1.5)">Zoom +</button>
+    <button @click="zoom(0.7)">Zoom -</button>
+    <button @click="resetView()">Nulstil</button>
+    <input type="range" min="10" max="40" x-model="fontSize">
+    <span x-text="fontSize + 'px'"></span>
+</div>
+
+<div id="viewport">
+    <div id="map-window" id="export-area">
+        <svg id="canvas"></svg>
+        
+        <div id="msf-box" x-init="makeDraggable($el)">
+            <div class="drag-bar"></div>
+            <div class="box-inner" style="padding:15px;">
+                <div id="h-in" contenteditable="true" style="font-weight:bold; font-size:18px; outline:none;">OVERSKRIFT</div>
+                <div style="display:flex; align-items:center; margin-top:8px;">
+                    <div style="width:10px; height:10px; background:var(--msf); border-radius:50%; margin-right:8px;"></div>
+                    <div id="s-in" contenteditable="true" style="font-size:13px; font-weight:bold; outline:none;">Underskrift</div>
+                </div>
+            </div>
+        </div>
+
+        <template x-for="(label, id) in labels" :key="id">
+            <div class="label-wrap" :style="`left: ${label.x}px; top: ${label.y}px;`" x-init="makeLabelDraggable($el, id)">
+                <div class="label-box" contenteditable="true" x-text="label.name" @input="labels[id].name = $el.innerText" :style="`font-size: ${fontSize}px`"></div>
+                <input class="url-field" x-model="labels[id].url" placeholder="Link...">
+            </div>
+        </template>
+    </div>
+</div>
+
+<script>
+function mapEditor() {
+    return {
+        fontSize: 14,
+        labels: {},
+        projection: null,
+        zoomHandler: null,
+        g: null,
+        
+        init() {
+            const svg = d3.select("#canvas");
+            this.g = svg.append("g");
+            this.projection = d3.geoMercator().scale(195).translate([600, 400]);
+            const path = d3.geoPath().projection(this.projection);
+            
+            this.zoomHandler = d3.zoom().scaleExtent([1, 40]).on("zoom", (e) => {
+                this.g.attr("transform", e.transform);
+                this.updateLabelPositions();
+            });
+            svg.call(this.zoomHandler);
+
+            d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson").then(data => {
+                this.g.selectAll("path").data(data.features).enter().append("path")
+                    .attr("d", path).attr("class", "country")
+                    .on("click", (e, d) => {
+                        const el = d3.select(e.currentTarget);
+                        const active = !el.classed("active");
+                        el.classed("active", active);
+                        if(active) {
+                            const center = path.centroid(d);
+                            this.labels[d.id] = { name: d.properties.name, x: center[0], y: center[1], worldX: center[0], worldY: center[1], url: "" };
+                        } else {
+                            delete this.labels[d.id];
+                        }
+                        this.updateLabelPositions();
+                    });
+            });
+        },
+
+        updateLabelPositions() {
+            const t = d3.zoomTransform(d3.select("#canvas").node());
+            Object.values(this.labels).forEach(l => {
+                l.x = l.worldX * t.k + t.x;
+                l.y = l.worldY * t.k + t.y;
+            });
+        },
+
+        makeDraggable(el) {
+            d3.select(el).call(d3.drag().filter(e => e.target.className === 'drag-bar').on("drag", (e) => {
+                el.style.left = e.x + "px";
+                el.style.top = e.y + "px";
+            }));
+        },
+
+        makeLabelDraggable(el, id) {
+            d3.select(el).call(d3.drag().on("drag", (e) => {
+                const t = d3.zoomTransform(d3.select("#canvas").node());
+                this.labels[id].worldX = (e.x - t.x) / t.k;
+                this.labels[id].worldY = (e.y - t.y) / t.k;
+                this.updateLabelPositions();
+            }));
+        },
+
+        zoom(f) { d3.select("#canvas").transition().call(this.zoomHandler.scaleBy, f); },
+        resetView() { d3.select("#canvas").transition().call(this.zoomHandler.transform, d3.zoomIdentity); },
+
+        exportMap() {
+            const t = d3.zoomTransform(d3.select("#canvas").node());
+            const box = document.getElementById('msf-box');
+            const rect = box.getBoundingClientRect();
+            const win = document.getElementById('map-window').getBoundingClientRect();
+            
+            let labs = "";
+            Object.values(this.labels).forEach(l => {
+                const content = l.url ? `<a href="${l.url}" target="_blank" style="color:black;text-decoration:none;">${l.name}</a>` : l.name;
+                labs += `<div style="position:absolute;left:${(l.x/1200)*100}%;top:${(l.y/600)*100}%;transform:translate(-50%,-100%);background:white;padding:0.4% 0.8%;font-weight:900;text-transform:uppercase;white-space:nowrap;font-size:${(this.fontSize/12).toFixed(2)}vw;">${content}</div>`;
+            });
+
+            const html = `<div style="width:100%;max-width:1200px;position:relative;aspect-ratio:2/1;background:#b5d5d5;overflow:hidden;font-family:sans-serif;">
+                <svg viewBox="${-t.x/t.k} ${-t.y/t.k} ${1200/t.k} ${600/t.k}" style="width:100%;height:100%;">
+                    <style>.c{fill:#f3ece6;stroke:#999;stroke-width:${0.4/t.k}} .a{fill:#e11a22!important}</style>
+                    ${this.g.html().replace(/class="country active"/g, 'class="c a"').replace(/class="country"/g, 'class="c"')}
+                </svg>${labs}
+                <div style="position:absolute;left:${((rect.left-win.left)/win.width)*100}%;top:${((rect.top-win.top)/win.height)*100}%;width:24%;background:white;padding:1.5%;border-left:0.6vw solid #e11a22;box-shadow:0 0.5vw 1vw rgba(0,0,0,0.1);">
+                    <div style="font-weight:bold;font-size:1.4vw;">${document.getElementById('h-in').innerText}</div>
+                    <div style="display:flex;align-items:center;font-size:1.1vw;margin-top:5%;font-weight:bold;"><div style="width:0.8vw;height:0.8vw;background:#e11a22;border-radius:50%;margin-right:0.5vw;"></div>${document.getElementById('s-in').innerText}</div>
+                </div></div>`;
+            
+            navigator.clipboard.writeText(html);
+            alert("HTML kopieret!");
+        }
+    }
+}
+</script>
+</body>
+</html>
