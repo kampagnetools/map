@@ -2,14 +2,14 @@
 <html lang="da">
 <head>
     <meta charset="UTF-8">
-    <title>MSF Generator | Alpine.js</title>
+    <title>MSF Kort Generator | Alpine & D3</title>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         :root { --msf: #e11a22; --water: #b5d5d5; --land: #f3ece6; }
         body { margin: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; background: #121212; color: #eee; overflow: hidden; }
         .header { height: 50px; padding: 0 20px; background: #000; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--msf); }
-        .controls { background: #252525; padding: 10px 20px; display: flex; gap: 20px; align-items: center; border-bottom: 1px solid #444; font-size: 12px; }
+        .controls { background: #252525; padding: 10px 20px; display: flex; gap: 20px; align-items: center; border-bottom: 1px solid #444; font-size: 11px; }
         #viewport { flex: 1; position: relative; background: #1a1a1a; display: flex; justify-content: center; align-items: center; }
         #map-window { width: 1200px; height: 600px; background: var(--water); position: relative; overflow: hidden; flex-shrink: 0; }
         svg { width: 100%; height: 100%; cursor: crosshair; }
@@ -27,37 +27,38 @@
 <body x-data="mapEditor()">
 
 <div class="header">
-    <div style="font-weight:900;">MSF KORT GENERATOR</div>
-    <button class="btn-red" @click="exportMap()">KOPIÉR HTML</button>
+    <div style="font-weight:900; letter-spacing: 1px;">MSF KORT GENERATOR</div>
+    <button class="btn-red" @click="exportMap()">KOPIÉR HTML TIL CMS</button>
 </div>
 
 <div class="controls">
     <button @click="zoom(1.5)">Zoom +</button>
     <button @click="zoom(0.7)">Zoom -</button>
     <button @click="resetView()">Nulstil</button>
-    <input type="range" min="10" max="40" x-model="fontSize">
-    <span x-text="fontSize + 'px'"></span>
+    <div style="display:flex; align-items:center; gap:8px; margin-left:10px;">
+        <label>Tekststørrelse:</label>
+        <input type="range" min="10" max="40" x-model="fontSize">
+        <span x-text="fontSize + 'px'" style="width:30px"></span>
+    </div>
 </div>
 
 <div id="viewport">
-    <div id="map-window" id="export-area">
+    <div id="map-window">
         <svg id="canvas"></svg>
-        
         <div id="msf-box" x-init="makeDraggable($el)">
             <div class="drag-bar"></div>
-            <div class="box-inner" style="padding:15px;">
-                <div id="h-in" contenteditable="true" style="font-weight:bold; font-size:18px; outline:none;">OVERSKRIFT</div>
-                <div style="display:flex; align-items:center; margin-top:8px;">
+            <div style="padding:15px;">
+                <div id="h-in" contenteditable="true" style="font-weight:bold; font-size:18px; outline:none; line-height:1.1;">OVERSKRIFT</div>
+                <div style="display:flex; align-items:center; margin-top:10px;">
                     <div style="width:10px; height:10px; background:var(--msf); border-radius:50%; margin-right:8px;"></div>
-                    <div id="s-in" contenteditable="true" style="font-size:13px; font-weight:bold; outline:none;">Underskrift</div>
+                    <div id="s-in" contenteditable="true" style="font-size:13px; font-weight:bold; outline:none;">Undertekst her</div>
                 </div>
             </div>
         </div>
-
         <template x-for="(label, id) in labels" :key="id">
             <div class="label-wrap" :style="`left: ${label.x}px; top: ${label.y}px;`" x-init="makeLabelDraggable($el, id)">
                 <div class="label-box" contenteditable="true" x-text="label.name" @input="labels[id].name = $el.innerText" :style="`font-size: ${fontSize}px`"></div>
-                <input class="url-field" x-model="labels[id].url" placeholder="Link...">
+                <input class="url-field" x-model="labels[id].url" placeholder="Link (valgfrit)">
             </div>
         </template>
     </div>
@@ -68,15 +69,17 @@ function mapEditor() {
     return {
         fontSize: 14,
         labels: {},
-        projection: null,
-        zoomHandler: null,
         g: null,
-        
+        zoomHandler: null,
+        daNames: { 
+            "Afghanistan": "Afghanistan", "Albania": "Albanien", "Algeria": "Algeriet", "Angola": "Angola", "Argentina": "Argentina", "Armenia": "Armenien", "Australia": "Australien", "Austria": "Østrig", "Azerbaijan": "Aserbajdsjan", "Bangladesh": "Bangladesh", "Belarus": "Hviderusland", "Belgium": "Belgien", "Benin": "Benin", "Bhutan": "Bhutan", "Bolivia": "Bolivia", "Bosnia and Herz.": "Bosnien-Hercegovina", "Botswana": "Botswana", "Brazil": "Brasilien", "Bulgaria": "Bulgarien", "Burkina Faso": "Burkina Faso", "Burundi": "Burundi", "Cambodia": "Cambodja", "Cameroon": "Cameroun", "Canada": "Canada", "Central African Rep.": "Centralafrikanske Rep.", "Chad": "Tchad", "Chile": "Chile", "China": "Kina", "Colombia": "Colombia", "Congo": "Congo", "Costa Rica": "Costa Rica", "Croatia": "Kroatien", "Cuba": "Cuba", "Cyprus": "Cypern", "Czech Rep.": "Tjekkiet", "Dem. Rep. Congo": "Dem. Rep. Congo", "Denmark": "Danmark", "Djibouti": "Djibouti", "Dominican Rep.": "Dominikanske Rep.", "Ecuador": "Ecuador", "Egypt": "Egypten", "El Salvador": "El Salvador", "Equatorial Guinea": "Ækvatorialguinea", "Eritrea": "Eritrea", "Estonia": "Estland", "Ethiopia": "Etiopien", "Fiji": "Fiji", "Finland": "Finland", "France": "Frankrig", "Gabon": "Gabon", "Gambia": "Gambia", "Georgia": "Georgien", "Germany": "Tyskland", "Ghana": "Ghana", "Greece": "Grækenland", "Guatemala": "Guatemala", "Guinea": "Guinea", "Guinea-Bissau": "Guinea-Bissau", "Guyana": "Guyana", "Haiti": "Haiti", "Honduras": "Honduras", "Hungary": "Ungarn", "Iceland": "Island", "India": "Indien", "Indonesia": "Indonesien", "Iran": "Iran", "Iraq": "Irak", "Ireland": "Irland", "Israel": "Israel", "Italy": "Italien", "Ivory Coast": "Elfenbenskysten", "Jamaica": "Jamaica", "Japan": "Japan", "Jordan": "Jordan", "Kazakhstan": "Kasakhstan", "Kenya": "Kenya", "Korea": "Sydkorea", "Kuwait": "Kuwait", "Kyrgyzstan": "Kirgisistan", "Laos": "Laos", "Latvia": "Letland", "Lebanon": "Libanon", "Lesotho": "Lesotho", "Liberia": "Liberia", "Libya": "Libyen", "Lithuania": "Litauen", "Luxembourg": "Luxembourg", "Macedonia": "Nordmakedonien", "Madagascar": "Madagaskar", "Malawi": "Malawi", "Malaysia": "Malaysia", "Mali": "Mali", "Mauritania": "Mauretanien", "Mexico": "Mexico", "Moldova": "Moldova", "Mongolia": "Mongoliet", "Montenegro": "Montenegro", "Morocco": "Marokko", "Mozambique": "Mozambique", "Myanmar": "Myanmar", "Namibia": "Namibia", "Nepal": "Nepal", "Netherlands": "Holland", "New Zealand": "New Zealand", "Nicaragua": "Nicaragua", "Niger": "Niger", "Nigeria": "Nigeria", "Norway": "Norge", "Oman": "Oman", "Pakistan": "Pakistan", "Palestine": "Palæstina", "Panama": "Panama", "Papua New Guinea": "Papua Ny Guinea", "Paraguay": "Paraguay", "Peru": "Peru", "Philippines": "Filippinerne", "Poland": "Polen", "Portugal": "Portugal", "Puerto Rico": "Puerto Rico", "Qatar": "Qatar", "Romania": "Rumænien", "Russia": "Rusland", "Rwanda": "Rwanda", "Saudi Arabia": "Saudi-Arabien", "Senegal": "Senegal", "Serbia": "Serbien", "Sierra Leone": "Sierra Leone", "Slovakia": "Slovakiet", "Slovenia": "Slovenien", "Solomon Is.": "Salomonøerne", "Somalia": "Somalia", "South Africa": "Sydafrika", "South Sudan": "Sydsudan", "Spain": "Spanien", "Sri Lanka": "Sri Lanka", "Sudan": "Sudan", "Suriname": "Surinam", "Swaziland": "Eswatini", "Sweden": "Sverige", "Switzerland": "Schweiz", "Syria": "Syrien", "Taiwan": "Taiwan", "Tajikistan": "Tadsjikistan", "Tanzania": "Tanzania", "Thailand": "Thailand", "Timor-Leste": "Timor-Leste", "Togo": "Togo", "Trinidad and Tobago": "Trinidad og Tobago", "Tunisia": "Tunesien", "Turkey": "Tyrkiet", "Turkmenistan": "Turkmenistan", "Uganda": "Uganda", "Ukraine": "Ukraine", "United Arab Emirates": "Forenede Arabiske Emirater", "United Kingdom": "Storbritannien", "United States": "USA", "Uruguay": "Uruguay", "Uzbekistan": "Usbekistan", "Venezuela": "Venezuela", "Vietnam": "Vietnam", "Western Sahara": "Vestsahara", "Yemen": "Yemen", "Zambia": "Zambia", "Zimbabwe": "Zimbabwe" 
+        },
+
         init() {
             const svg = d3.select("#canvas");
             this.g = svg.append("g");
-            this.projection = d3.geoMercator().scale(195).translate([600, 400]);
-            const path = d3.geoPath().projection(this.projection);
+            const projection = d3.geoMercator().scale(195).translate([600, 420]);
+            const path = d3.geoPath().projection(projection);
             
             this.zoomHandler = d3.zoom().scaleExtent([1, 40]).on("zoom", (e) => {
                 this.g.attr("transform", e.transform);
@@ -93,7 +96,8 @@ function mapEditor() {
                         el.classed("active", active);
                         if(active) {
                             const center = path.centroid(d);
-                            this.labels[d.id] = { name: d.properties.name, x: center[0], y: center[1], worldX: center[0], worldY: center[1], url: "" };
+                            const name = this.daNames[d.properties.name] || d.properties.name;
+                            this.labels[d.id] = { name: name, x: center[0], y: center[1], worldX: center[0], worldY: center[1], url: "" };
                         } else {
                             delete this.labels[d.id];
                         }
@@ -112,8 +116,7 @@ function mapEditor() {
 
         makeDraggable(el) {
             d3.select(el).call(d3.drag().filter(e => e.target.className === 'drag-bar').on("drag", (e) => {
-                el.style.left = e.x + "px";
-                el.style.top = e.y + "px";
+                el.style.left = e.x + "px"; el.style.top = e.y + "px";
             }));
         },
 
@@ -138,21 +141,21 @@ function mapEditor() {
             let labs = "";
             Object.values(this.labels).forEach(l => {
                 const content = l.url ? `<a href="${l.url}" target="_blank" style="color:black;text-decoration:none;">${l.name}</a>` : l.name;
-                labs += `<div style="position:absolute;left:${(l.x/1200)*100}%;top:${(l.y/600)*100}%;transform:translate(-50%,-100%);background:white;padding:0.4% 0.8%;font-weight:900;text-transform:uppercase;white-space:nowrap;font-size:${(this.fontSize/12).toFixed(2)}vw;">${content}</div>`;
+                labs += `<div style="position:absolute;left:${(l.x/1200)*100}%;top:${(l.y/600)*100}%;transform:translate(-50%,-100%);background:white;padding:0.4% 0.8%;font-weight:900;text-transform:uppercase;white-space:nowrap;box-shadow:2px 2px 4px rgba(0,0,0,0.1);z-index:10;font-size:${(this.fontSize/12).toFixed(2)}vw;">${content}</div>`;
             });
 
             const html = `<div style="width:100%;max-width:1200px;position:relative;aspect-ratio:2/1;background:#b5d5d5;overflow:hidden;font-family:sans-serif;">
-                <svg viewBox="${-t.x/t.k} ${-t.y/t.k} ${1200/t.k} ${600/t.k}" style="width:100%;height:100%;">
-                    <style>.c{fill:#f3ece6;stroke:#999;stroke-width:${0.4/t.k}} .a{fill:#e11a22!important}</style>
-                    ${this.g.html().replace(/class="country active"/g, 'class="c a"').replace(/class="country"/g, 'class="c"')}
-                </svg>${labs}
-                <div style="position:absolute;left:${((rect.left-win.left)/win.width)*100}%;top:${((rect.top-win.top)/win.height)*100}%;width:24%;background:white;padding:1.5%;border-left:0.6vw solid #e11a22;box-shadow:0 0.5vw 1vw rgba(0,0,0,0.1);">
-                    <div style="font-weight:bold;font-size:1.4vw;">${document.getElementById('h-in').innerText}</div>
-                    <div style="display:flex;align-items:center;font-size:1.1vw;margin-top:5%;font-weight:bold;"><div style="width:0.8vw;height:0.8vw;background:#e11a22;border-radius:50%;margin-right:0.5vw;"></div>${document.getElementById('s-in').innerText}</div>
-                </div></div>`;
+<svg viewBox="${-t.x/t.k} ${-t.y/t.k} ${1200/t.k} ${600/t.k}" style="width:100%;height:100%;display:block;">
+<style>.c{fill:#f3ece6;stroke:#999;stroke-width:${(0.4/t.k).toFixed(3)}} .a{fill:#e11a22!important}</style>
+${this.g.html().replace(/class="country active"/g, 'class="c a"').replace(/class="country"/g, 'class="c"')}
+</svg>${labs}
+<div style="position:absolute;left:${((rect.left-win.left)/win.width)*100}%;top:${((rect.top-win.top)/win.height)*100}%;width:24%;background:white;padding:1.5%;border-left:0.6vw solid #e11a22;box-shadow:0 0.5vw 1vw rgba(0,0,0,0.1);pointer-events:none;">
+<div style="font-weight:bold;font-size:1.4vw;color:black;line-height:1.2;">${document.getElementById('h-in').innerText}</div>
+<div style="display:flex;align-items:center;font-size:1.1vw;margin-top:5%;font-weight:bold;color:black;"><div style="width:0.8vw;height:0.8vw;background:#e11a22;border-radius:50%;margin-right:0.5vw;"></div>${document.getElementById('s-in').innerText}</div>
+</div></div>`;
             
             navigator.clipboard.writeText(html);
-            alert("HTML kopieret!");
+            alert("Klar! HTML-koden er kopieret med danske navne.");
         }
     }
 }
