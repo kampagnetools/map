@@ -2,63 +2,58 @@
 <html lang="da">
 <head>
     <meta charset="UTF-8">
-    <title>MSF Kort Generator</title>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         :root { --msf: #e11a22; --water: #b5d5d5; --land: #f3ece6; }
         body { margin: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; background: #121212; color: #eee; overflow: hidden; }
         .header { height: 50px; padding: 0 20px; background: #000; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--msf); }
-        .controls { background: #252525; padding: 10px 20px; display: flex; gap: 20px; align-items: center; border-bottom: 1px solid #444; font-size: 11px; }
+        .controls { background: #252525; padding: 12px 20px; display: flex; gap: 25px; align-items: center; border-bottom: 1px solid #444; font-size: 12px; }
         #viewport { flex: 1; position: relative; background: #1a1a1a; display: flex; justify-content: center; align-items: center; }
-        #map-window { width: 1200px; height: 600px; background: var(--water); position: relative; overflow: hidden; flex-shrink: 0; }
-        svg { width: 100%; height: 100%; cursor: crosshair; }
-        .country { fill: var(--land); stroke: #999; stroke-width: 0.3px; cursor: pointer; }
+        #map-window { width: 1200px; height: 600px; background: var(--water); position: relative; overflow: hidden; flex-shrink: 0; border: 1px solid #000; }
+        svg { width: 100%; height: 100%; cursor: crosshair; position: absolute; }
+        .country { fill: var(--land); stroke: #999; stroke-width: 0.3px; cursor: pointer; transition: fill 0.2s; }
         .country.active { fill: var(--msf) !important; }
-        #msf-box { position: absolute; top: 20px; left: 20px; background: white; color: black; width: 280px; z-index: 100; border-left: 8px solid var(--msf); box-shadow: 5px 5px 15px rgba(0,0,0,0.2); }
-        .drag-bar { background: #f0f0f0; height: 18px; cursor: move; }
-        .label-wrap { position: absolute; transform: translate(-50%, -100%); z-index: 90; pointer-events: all; display: flex; flex-direction: column; align-items: center; }
-        .label-box { background: white; padding: 4px 10px; color: black; font-weight: 900; text-transform: uppercase; box-shadow: 2px 2px 8px rgba(0,0,0,0.2); cursor: move; outline: none; }
-        .url-field { margin-top: 4px; font-size: 9px; width: 100px; border: 1px solid #ddd; padding: 2px; }
-        button { padding: 6px 12px; background: #333; color: white; border: 1px solid #555; cursor: pointer; font-size: 11px; }
+        #msf-box { position: absolute; background: white; color: black; width: 280px; z-index: 150; border-left: 8px solid var(--msf); box-shadow: 5px 5px 20px rgba(0,0,0,0.4); left: 10px; top: 10px; }
+        .drag-bar { background: #eee; height: 22px; cursor: move; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #999; }
+        .label-wrap { position: absolute; transform: translate(-50%, -100%); z-index: 110; display: flex; flex-direction: column; align-items: center; }
+        .label-box { background: white; padding: 6px 14px; color: black; font-weight: 900; text-transform: uppercase; box-shadow: 2px 2px 10px rgba(0,0,0,0.3); cursor: move; outline: none; white-space: nowrap; border-bottom: 3px solid var(--msf); letter-spacing: 0.5px; }
+        button { padding: 8px 16px; background: #444; color: white; border: 1px solid #666; cursor: pointer; font-size: 12px; border-radius: 4px; }
         .btn-red { background: var(--msf); border: none; font-weight: bold; }
     </style>
 </head>
 <body x-data="mapEditor()">
 
 <div class="header">
-    <div style="font-weight:900; letter-spacing: 1px;">MSF KORT GENERATOR</div>
-    <button class="btn-red" @click="exportMap()">KOPIÉR HTML TIL CMS</button>
+    <div style="font-weight:900; letter-spacing:1px;">MSF - KORT GENERATOR</div>
+    <button class="btn-red" @click="exportMap()">KOPIÉR KODE (VIRKER PÅ MOBIL)</button>
 </div>
 
 <div class="controls">
     <button @click="zoom(1.5)">Zoom +</button>
     <button @click="zoom(0.7)">Zoom -</button>
     <button @click="resetView()">Nulstil</button>
-    <div style="display:flex; align-items:center; gap:8px; margin-left:10px;">
-        <label>Tekststørrelse:</label>
-        <input type="range" min="10" max="40" x-model="fontSize">
-        <span x-text="fontSize + 'px'" style="width:30px"></span>
-    </div>
+    <input type="range" min="10" max="40" x-model="fontSize">
+    <span x-text="fontSize + 'px'"></span>
 </div>
 
 <div id="viewport">
     <div id="map-window">
-        <svg id="canvas"></svg>
+        <svg id="canvas"><g id="map-layer"></g><g id="lines-layer"></g></svg>
         <div id="msf-box" x-init="makeDraggable($el)">
-            <div class="drag-bar"></div>
+            <div class="drag-bar">Flyt boks (Desktop)</div>
             <div style="padding:15px;">
-                <div id="h-in" contenteditable="true" style="font-weight:bold; font-size:18px; outline:none; line-height:1.1;">OVERSKRIFT</div>
-                <div style="display:flex; align-items:center; margin-top:10px;">
-                    <div style="width:10px; height:10px; background:var(--msf); border-radius:50%; margin-right:8px;"></div>
-                    <div id="s-in" contenteditable="true" style="font-size:13px; font-weight:bold; outline:none;">Undertekst her</div>
-                </div>
+                <div id="h-in" contenteditable="true" style="font-weight:900; font-size:18px; outline:none; font-family:sans-serif; text-transform:uppercase;">OVERSKRIFT</div>
+                <div id="s-in" contenteditable="true" style="font-size:13px; font-weight:bold; outline:none; margin-top:5px; font-family:sans-serif;">Undertekst her</div>
             </div>
         </div>
         <template x-for="(label, id) in labels" :key="id">
             <div class="label-wrap" :style="`left: ${label.x}px; top: ${label.y}px;`" x-init="makeLabelDraggable($el, id)">
-                <div class="label-box" contenteditable="true" x-text="label.name" @input="labels[id].name = $el.innerText" :style="`font-size: ${fontSize}px`"></div>
-                <input class="url-field" x-model="labels[id].url" placeholder="Link (valgfrit)">
+                <div class="label-box" contenteditable="true" x-text="label.name" @input="labels[id].name = $el.innerText" :style="`font-size: ${fontSize}px; font-family:sans-serif;`"></div>
+                <div style="background:#333; padding:4px; display:flex; gap:6px; margin-top:4px; border-radius:4px;">
+                    <button style="font-size:9px; padding:2px 6px;" @click="label.useLine = !label.useLine; drawLines(currentK)">Streg</button>
+                    <input style="font-size:9px; width:70px; background:#000; color:#fff; border:1px solid #555;" x-model="labels[id].url" placeholder="Link...">
+                </div>
             </div>
         </template>
     </div>
@@ -67,26 +62,21 @@
 <script>
 function mapEditor() {
     return {
-        fontSize: 14,
-        labels: {},
-        g: null,
-        zoomHandler: null,
-        daNames: { 
-            "Afghanistan": "Afghanistan", "Albania": "Albanien", "Algeria": "Algeriet", "Angola": "Angola", "Argentina": "Argentina", "Armenia": "Armenien", "Australia": "Australien", "Austria": "Østrig", "Azerbaijan": "Aserbajdsjan", "Bangladesh": "Bangladesh", "Belarus": "Hviderusland", "Belgium": "Belgien", "Benin": "Benin", "Bhutan": "Bhutan", "Bolivia": "Bolivia", "Bosnia and Herz.": "Bosnien-Hercegovina", "Botswana": "Botswana", "Brazil": "Brasilien", "Bulgaria": "Bulgarien", "Burkina Faso": "Burkina Faso", "Burundi": "Burundi", "Cambodia": "Cambodja", "Cameroon": "Cameroun", "Canada": "Canada", "Central African Rep.": "Centralafrikanske Rep.", "Chad": "Tchad", "Chile": "Chile", "China": "Kina", "Colombia": "Colombia", "Congo": "Congo", "Costa Rica": "Costa Rica", "Croatia": "Kroatien", "Cuba": "Cuba", "Cyprus": "Cypern", "Czech Rep.": "Tjekkiet", "Dem. Rep. Congo": "Dem. Rep. Congo", "Denmark": "Danmark", "Djibouti": "Djibouti", "Dominican Rep.": "Dominikanske Rep.", "Ecuador": "Ecuador", "Egypt": "Egypten", "El Salvador": "El Salvador", "Equatorial Guinea": "Ækvatorialguinea", "Eritrea": "Eritrea", "Estonia": "Estland", "Ethiopia": "Etiopien", "Fiji": "Fiji", "Finland": "Finland", "France": "Frankrig", "Gabon": "Gabon", "Gambia": "Gambia", "Georgia": "Georgien", "Germany": "Tyskland", "Ghana": "Ghana", "Greece": "Grækenland", "Guatemala": "Guatemala", "Guinea": "Guinea", "Guinea-Bissau": "Guinea-Bissau", "Guyana": "Guyana", "Haiti": "Haiti", "Honduras": "Honduras", "Hungary": "Ungarn", "Iceland": "Island", "India": "Indien", "Indonesia": "Indonesien", "Iran": "Iran", "Iraq": "Irak", "Ireland": "Irland", "Israel": "Israel", "Italy": "Italien", "Ivory Coast": "Elfenbenskysten", "Jamaica": "Jamaica", "Japan": "Japan", "Jordan": "Jordan", "Kazakhstan": "Kasakhstan", "Kenya": "Kenya", "Korea": "Sydkorea", "Kuwait": "Kuwait", "Kyrgyzstan": "Kirgisistan", "Laos": "Laos", "Latvia": "Letland", "Lebanon": "Libanon", "Lesotho": "Lesotho", "Liberia": "Liberia", "Libya": "Libyen", "Lithuania": "Litauen", "Luxembourg": "Luxembourg", "Macedonia": "Nordmakedonien", "Madagascar": "Madagaskar", "Malawi": "Malawi", "Malaysia": "Malaysia", "Mali": "Mali", "Mauritania": "Mauretanien", "Mexico": "Mexico", "Moldova": "Moldova", "Mongolia": "Mongoliet", "Montenegro": "Montenegro", "Morocco": "Marokko", "Mozambique": "Mozambique", "Myanmar": "Myanmar", "Namibia": "Namibia", "Nepal": "Nepal", "Netherlands": "Holland", "New Zealand": "New Zealand", "Nicaragua": "Nicaragua", "Niger": "Niger", "Nigeria": "Nigeria", "Norway": "Norge", "Oman": "Oman", "Pakistan": "Pakistan", "Palestine": "Palæstina", "Panama": "Panama", "Papua New Guinea": "Papua Ny Guinea", "Paraguay": "Paraguay", "Peru": "Peru", "Philippines": "Filippinerne", "Poland": "Polen", "Portugal": "Portugal", "Puerto Rico": "Puerto Rico", "Qatar": "Qatar", "Romania": "Rumænien", "Russia": "Rusland", "Rwanda": "Rwanda", "Saudi Arabia": "Saudi-Arabien", "Senegal": "Senegal", "Serbia": "Serbien", "Sierra Leone": "Sierra Leone", "Slovakia": "Slovakiet", "Slovenia": "Slovenien", "Solomon Is.": "Salomonøerne", "Somalia": "Somalia", "South Africa": "Sydafrika", "South Sudan": "Sydsudan", "Spain": "Spanien", "Sri Lanka": "Sri Lanka", "Sudan": "Sudan", "Suriname": "Surinam", "Swaziland": "Eswatini", "Sweden": "Sverige", "Switzerland": "Schweiz", "Syria": "Syrien", "Taiwan": "Taiwan", "Tajikistan": "Tadsjikistan", "Tanzania": "Tanzania", "Thailand": "Thailand", "Timor-Leste": "Timor-Leste", "Togo": "Togo", "Trinidad and Tobago": "Trinidad og Tobago", "Tunisia": "Tunesien", "Turkey": "Tyrkiet", "Turkmenistan": "Turkmenistan", "Uganda": "Uganda", "Ukraine": "Ukraine", "United Arab Emirates": "Forenede Arabiske Emirater", "United Kingdom": "Storbritannien", "United States": "USA", "Uruguay": "Uruguay", "Uzbekistan": "Usbekistan", "Venezuela": "Venezuela", "Vietnam": "Vietnam", "Western Sahara": "Vestsahara", "Yemen": "Yemen", "Zambia": "Zambia", "Zimbabwe": "Zimbabwe" 
-        },
-
+        fontSize: 14, labels: {}, currentK: 1, g: null, linesG: null, zoomHandler: null,
+        daNames: { "Afghanistan":"Afghanistan","Syria":"Syrien","Sudan":"Sudan","South Sudan":"Sydsudan","Democratic Republic of the Congo":"Dem. Rep. Congo","Ukraine":"Ukraine","Yemen":"Yemen","Central African Republic":"Centralafrikanske Rep.","Ethiopia":"Etiopien","Gaza":"Gaza","Palestine":"Palæstina","Lebanon":"Libanon","Mali":"Mali","Myanmar":"Myanmar","Nigeria":"Nigeria","Somalia":"Somalia","Haiti":"Haiti","Greece":"Grækenland","Iraq":"Irak","Libya":"Libyen","Chad":"Tchad","Niger":"Niger","Burkina Faso":"Burkina Faso" },
         init() {
             const svg = d3.select("#canvas");
-            this.g = svg.append("g");
+            this.g = d3.select("#map-layer");
+            this.linesG = d3.select("#lines-layer");
             const projection = d3.geoMercator().scale(195).translate([600, 420]);
             const path = d3.geoPath().projection(projection);
-            
             this.zoomHandler = d3.zoom().scaleExtent([1, 40]).on("zoom", (e) => {
+                this.currentK = e.transform.k;
                 this.g.attr("transform", e.transform);
+                this.linesG.attr("transform", e.transform);
                 this.updateLabelPositions();
             });
             svg.call(this.zoomHandler);
-
             d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson").then(data => {
                 this.g.selectAll("path").data(data.features).enter().append("path")
                     .attr("d", path).attr("class", "country")
@@ -96,30 +86,33 @@ function mapEditor() {
                         el.classed("active", active);
                         if(active) {
                             const center = path.centroid(d);
-                            const name = this.daNames[d.properties.name] || d.properties.name;
-                            this.labels[d.id] = { name: name, x: center[0], y: center[1], worldX: center[0], worldY: center[1], url: "" };
-                        } else {
-                            delete this.labels[d.id];
-                        }
+                            const displayName = this.daNames[d.properties.name] || d.properties.name;
+                            this.labels[d.id] = { name: displayName, anchorX: center[0], anchorY: center[1], worldX: center[0], worldY: center[1], useLine: true, url: "" };
+                        } else { delete this.labels[d.id]; }
                         this.updateLabelPositions();
                     });
             });
         },
-
         updateLabelPositions() {
             const t = d3.zoomTransform(d3.select("#canvas").node());
             Object.values(this.labels).forEach(l => {
-                l.x = l.worldX * t.k + t.x;
-                l.y = l.worldY * t.k + t.y;
+                l.x = l.worldX * t.k + t.x; l.y = l.worldY * t.k + t.y;
+            });
+            this.drawLines(t.k);
+        },
+        drawLines(k = 1) {
+            this.linesG.selectAll("g").remove();
+            Object.values(this.labels).forEach(l => {
+                if (!l.useLine) return;
+                const group = this.linesG.append("g");
+                group.append("line").attr("x1", l.anchorX).attr("y1", l.anchorY).attr("x2", l.worldX).attr("y2", l.worldY).attr("stroke", "white").attr("stroke-width", 5/k);
+                group.append("line").attr("x1", l.anchorX).attr("y1", l.anchorY).attr("x2", l.worldX).attr("y2", l.worldY).attr("stroke", "#c2151b").attr("stroke-width", 3/k);
+                group.append("circle").attr("cx", l.anchorX).attr("cy", l.anchorY).attr("r", 5.5/k).attr("fill", "#e11a22").attr("stroke", "white").attr("stroke-width", 1.5/k);
             });
         },
-
         makeDraggable(el) {
-            d3.select(el).call(d3.drag().filter(e => e.target.className === 'drag-bar').on("drag", (e) => {
-                el.style.left = e.x + "px"; el.style.top = e.y + "px";
-            }));
+            d3.select(el).call(d3.drag().filter(e => e.target.className === 'drag-bar').on("drag", (e) => { el.style.left = e.x + "px"; el.style.top = e.y + "px"; }));
         },
-
         makeLabelDraggable(el, id) {
             d3.select(el).call(d3.drag().on("drag", (e) => {
                 const t = d3.zoomTransform(d3.select("#canvas").node());
@@ -128,34 +121,54 @@ function mapEditor() {
                 this.updateLabelPositions();
             }));
         },
-
         zoom(f) { d3.select("#canvas").transition().call(this.zoomHandler.scaleBy, f); },
         resetView() { d3.select("#canvas").transition().call(this.zoomHandler.transform, d3.zoomIdentity); },
-
         exportMap() {
-            const t = d3.zoomTransform(d3.select("#canvas").node());
-            const box = document.getElementById('msf-box');
-            const rect = box.getBoundingClientRect();
-            const win = document.getElementById('map-window').getBoundingClientRect();
-            
-            let labs = "";
+            const t = d3.zoomTransform(d3.select("#canvas").node()), box = document.getElementById('msf-box');
+            let labs = "", linesHtml = "";
             Object.values(this.labels).forEach(l => {
-                const content = l.url ? `<a href="${l.url}" target="_blank" style="color:black;text-decoration:none;">${l.name}</a>` : l.name;
-                labs += `<div style="position:absolute;left:${(l.x/1200)*100}%;top:${(l.y/600)*100}%;transform:translate(-50%,-100%);background:white;padding:0.4% 0.8%;font-weight:900;text-transform:uppercase;white-space:nowrap;box-shadow:2px 2px 4px rgba(0,0,0,0.1);z-index:10;font-size:${(this.fontSize/12).toFixed(2)}vw;">${content}</div>`;
+                const pX = ((l.worldX * t.k + t.x) / 12);
+                const pY = ((l.worldY * t.k + t.y) / 6);
+                const isLink = l.url && l.url.trim() !== "";
+                const content = isLink ? `<a href="${l.url}" target="_blank" style="color:inherit;text-decoration:none;cursor:pointer;display:block;">${l.name}</a>` : l.name;
+                
+                labs += `<div style="position:absolute;left:${pX.toFixed(2)}%;top:${pY.toFixed(2)}%;transform:translate(-50%,-100%);background:#fff;padding:.4em .8em;box-shadow:3px 3px 6px rgba(0,0,0,.15);z-index:10;white-space:nowrap;font-family:sans-serif;font-weight:900;text-transform:uppercase;font-size:clamp(10px,${(this.fontSize/12).toFixed(2)}vw,22px);line-height:1;border-bottom:.3vw solid #e11a22;letter-spacing:.02em;pointer-events:auto;">${content}</div>`;
+                
+                if(l.useLine) {
+                    linesHtml += `<line x1="${l.anchorX}" y1="${l.anchorY}" x2="${l.worldX}" y2="${l.worldY}" stroke="#fff" stroke-width="${(5/t.k).toFixed(4)}" stroke-linecap="round"/><line x1="${l.anchorX}" y1="${l.anchorY}" x2="${l.worldX}" y2="${l.worldY}" stroke="#c2151b" stroke-width="${(3/t.k).toFixed(4)}" stroke-linecap="round"/><circle cx="${l.anchorX}" cy="${l.anchorY}" r="${(5.5/t.k).toFixed(3)}" fill="#e11a22" stroke="#fff" stroke-width="${(1.5/t.k).toFixed(4)}"/>`;
+                }
             });
-
-            const html = `<div style="width:100%;max-width:1200px;position:relative;aspect-ratio:2/1;background:#b5d5d5;overflow:hidden;font-family:sans-serif;">
-<svg viewBox="${-t.x/t.k} ${-t.y/t.k} ${1200/t.k} ${600/t.k}" style="width:100%;height:100%;display:block;">
-<style>.c{fill:#f3ece6;stroke:#999;stroke-width:${(0.4/t.k).toFixed(3)}} .a{fill:#e11a22!important}</style>
-${this.g.html().replace(/class="country active"/g, 'class="c a"').replace(/class="country"/g, 'class="c"')}
-</svg>${labs}
-<div style="position:absolute;left:${((rect.left-win.left)/win.width)*100}%;top:${((rect.top-win.top)/win.height)*100}%;width:24%;background:white;padding:1.5%;border-left:0.6vw solid #e11a22;box-shadow:0 0.5vw 1vw rgba(0,0,0,0.1);pointer-events:none;">
-<div style="font-weight:bold;font-size:1.4vw;color:black;line-height:1.2;">${document.getElementById('h-in').innerText}</div>
-<div style="display:flex;align-items:center;font-size:1.1vw;margin-top:5%;font-weight:bold;color:black;"><div style="width:0.8vw;height:0.8vw;background:#e11a22;border-radius:50%;margin-right:0.5vw;"></div>${document.getElementById('s-in').innerText}</div>
-</div></div>`;
+            const h = document.getElementById('h-in').innerText, s = document.getElementById('s-in').innerText;
             
-            navigator.clipboard.writeText(html);
-            alert("Klar! HTML-koden er kopieret med danske navne.");
+            const finalHtml = `<div class="msf-outer-wrap" style="width:100%;max-width:1200px;margin:0 auto;display:flex;flex-direction:column;font-family:sans-serif;">
+<style>
+    .msf-outer-wrap { position: relative; width: 100%; }
+    .msf-map-section { position:relative; width:100%; aspect-ratio:1200/600; background:#b5d5d5; overflow:hidden; }
+    .msf-label-overlay { position: absolute; inset: 0; pointer-events: none; }
+    .msf-hybrid-box { background:#fff; padding:20px; border-left:8px solid #e11a22; z-index:50; }
+    @media (min-width: 769px) {
+        .msf-hybrid-box { position: absolute; left:${(box.offsetLeft/12).toFixed(2)}%; top:${(box.offsetTop/6).toFixed(2)}%; width:280px; box-shadow:5px 5px 20px rgba(0,0,0,0.2); }
+    }
+    @media (max-width: 768px) {
+        .msf-hybrid-box { position: static; width: 100%; box-sizing: border-box; box-shadow: none; padding: 25px 20px; border-bottom: 2px solid #eee; }
+    }
+</style>
+<div class="msf-map-section">
+    <svg viewBox="${-t.x/t.k} ${-t.y/t.k} ${1200/t.k} ${600/t.k}" style="width:100%;height:100%;display:block;position:absolute;top:0;left:0;">
+        <style>.c{fill:#f3ece6;stroke:#999;stroke-width:${(0.4/t.k).toFixed(4)}}.a{fill:#e11a22!important}</style>
+        ${this.g.html().replace(/class="country active"/g, 'class="c a"').replace(/class="country"/g, 'class="c"').replace(/\s+/g,' ')}
+        <g>${linesHtml}</g>
+    </svg>
+    <div class="msf-label-overlay">${labs}</div>
+</div>
+<div class="msf-hybrid-box">
+    <p style="font-weight:900; font-size:20px; color:#000; line-height:1.1; margin:0; text-transform:uppercase;">${h}</p>
+    <p style="font-size:15px; margin-top:8px; color:#333; font-weight:700; margin-bottom:0;">${s}</p>
+</div>
+</div>`;
+
+            navigator.clipboard.writeText(finalHtml.replace(/\s+/g,' '));
+            alert("Kode kopieret!");
         }
     }
 }
