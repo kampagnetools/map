@@ -1,75 +1,116 @@
-<!DOCTYPE html>
-<html lang="da">
+
 <head>
     <meta charset="UTF-8">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        :root { --msf: #e11a22; --water: #b5d5d5; --land: #f3ece6; }
-        body { margin: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; background: #121212; color: #eee; overflow: hidden; }
-        .header { height: 50px; padding: 0 20px; background: #000; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--msf); }
-        .controls { background: #252525; padding: 12px 20px; display: flex; gap: 25px; align-items: center; border-bottom: 1px solid #444; font-size: 12px; }
-        #viewport { flex: 1; position: relative; background: #1a1a1a; display: flex; justify-content: center; align-items: center; }
+        :root { --msf: #e11a22; --water: #b5d5d5; --land: #f3ece6; --panel-bg: #252525; }
+        body { margin: 0; font-family: sans-serif; display: flex; flex-direction: row; height: 100vh; background: #121212; color: #eee; overflow: hidden; }
+        .side-panel { width: 320px; background: var(--panel-bg); border-right: 2px solid var(--msf); display: flex; flex-direction: column; flex-shrink: 0; z-index: 200; }
+        .panel-header { padding: 20px; background: #000; font-weight: 900; letter-spacing: 1px; font-size: 14px; border-bottom: 1px solid #444; }
+        .panel-content { padding: 20px; display: flex; flex-direction: column; gap: 20px; flex: 1; overflow-y: auto; }
+        #viewport { flex: 1; position: relative; background: #1a1a1a; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+        /* Fast format 1200x600 */
         #map-window { width: 1200px; height: 600px; background: var(--water); position: relative; overflow: hidden; flex-shrink: 0; border: 1px solid #000; }
         svg { width: 100%; height: 100%; cursor: crosshair; position: absolute; }
         .country { fill: var(--land); stroke: #999; stroke-width: 0.3px; cursor: pointer; transition: fill 0.2s; }
         .country.active { fill: var(--msf) !important; }
         #msf-box { position: absolute; background: white; color: black; width: 280px; z-index: 150; border-left: 8px solid var(--msf); box-shadow: 5px 5px 20px rgba(0,0,0,0.4); left: 10px; top: 10px; }
         .drag-bar { background: #eee; height: 22px; cursor: move; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #999; }
-        .label-wrap { position: absolute; transform: translate(-50%, -100%); z-index: 110; display: flex; flex-direction: column; align-items: center; }
+        .label-wrap { position: absolute; transform: translate(-50%, -50%); z-index: 110; display: flex; flex-direction: column; align-items: center; }
         .label-box { background: white; padding: 6px 14px; color: black; font-weight: 900; text-transform: uppercase; box-shadow: 2px 2px 10px rgba(0,0,0,0.3); cursor: move; outline: none; white-space: nowrap; border-bottom: 3px solid var(--msf); letter-spacing: 0.5px; }
-        button { padding: 8px 16px; background: #444; color: white; border: 1px solid #666; cursor: pointer; font-size: 12px; border-radius: 4px; }
-        .btn-red { background: var(--msf); border: none; font-weight: bold; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        .control-label { font-size: 11px; text-transform: uppercase; color: #999; font-weight: bold; }
+        button { padding: 10px; background: #444; color: white; border: 1px solid #666; cursor: pointer; font-size: 12px; border-radius: 4px; font-weight: bold; }
+        .btn-red { background: var(--msf); border: none; font-size: 14px; padding: 12px; margin-bottom: 5px; }
+        input[list], input[type="range"] { width: 100%; box-sizing: border-box; }
+        input[list] { padding: 10px; border-radius: 4px; border: 1px solid #666; background: #333; color: white; }
+        .selected-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+        .country-item { background: #333; padding: 8px 12px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; border-left: 3px solid var(--msf); }
+        .remove-btn { color: var(--msf); font-weight: bold; cursor: pointer; padding: 0 5px; }
     </style>
 </head>
 <body x-data="mapEditor()">
 
-<div class="header">
-    <div style="font-weight:900; letter-spacing:1px;">MSF - KORT GENERATOR</div>
-    <button class="btn-red" @click="exportMap()">KOPIÉR KODE (VIRKER PÅ MOBIL)</button>
-</div>
-
-<div class="controls">
-    <button @click="zoom(1.5)">Zoom +</button>
-    <button @click="zoom(0.7)">Zoom -</button>
-    <button @click="resetView()">Nulstil</button>
-    <input type="range" min="10" max="40" x-model="fontSize">
-    <span x-text="fontSize + 'px'"></span>
+<div class="side-panel">
+    <div class="panel-header">MSF KORT GENERATOR</div>
+    <div class="panel-content">
+        <div class="control-group">
+            <div class="control-label">Søg land</div>
+            <input list="country-list" x-model="searchQuery" @input="selectCountry($event.target.value)" placeholder="Skriv landets navn...">
+            <datalist id="country-list">
+                <template x-for="name in Object.values(daNames).sort()">
+                    <option :value="name"></option>
+                </template>
+            </datalist>
+        </div>
+        <div class="control-group">
+            <div class="control-label">Valgte lande</div>
+            <div class="selected-list">
+                <template x-for="(label, id) in labels" :key="id">
+                    <div class="country-item">
+                        <span x-text="label.name"></span>
+                        <span class="remove-btn" @click="removeById(id)">×</span>
+                    </div>
+                </template>
+            </div>
+        </div>
+        <div class="control-group">
+            <div class="control-label">Visning</div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button @click="zoom(1.5)">Zoom +</button>
+                <button @click="zoom(0.7)">Zoom -</button>
+            </div>
+            <button @click="zoomToFit()" style="background: #555;">Zoom til valgte</button>
+            <button @click="resetView()">Nulstil</button>
+        </div>
+        <div class="control-group">
+            <div class="control-label">Tekst størrelse: <span x-text="fontSize + 'px'"></span></div>
+            <input type="range" min="10" max="40" x-model="fontSize">
+        </div>
+        <div style="margin-top: auto;">
+            <button class="btn-red" style="width: 100%;" @click="exportMap()">KOPIÉR HTML KODE</button>
+            <button @click="exportPNG()" style="width: 100%; background: #222; border: 1px solid #444;">DOWNLOAD PNG</button>
+        </div>
+    </div>
 </div>
 
 <div id="viewport">
     <div id="map-window">
         <svg id="canvas"><g id="map-layer"></g><g id="lines-layer"></g></svg>
         <div id="msf-box" x-init="makeDraggable($el)">
-            <div class="drag-bar">Flyt boks (Desktop)</div>
+            <div class="drag-bar">Flyt boks</div>
             <div style="padding:15px;">
-                <div id="h-in" contenteditable="true" style="font-weight:900; font-size:18px; outline:none; font-family:sans-serif; text-transform:uppercase;">OVERSKRIFT</div>
-                <div id="s-in" contenteditable="true" style="font-size:13px; font-weight:bold; outline:none; margin-top:5px; font-family:sans-serif;">Undertekst her</div>
+                <div id="h-in" contenteditable="true" style="font-weight:900; font-size:18px; outline:none; text-transform:uppercase; color: black;">OVERSKRIFT</div>
+                <div id="s-in" contenteditable="true" style="font-size:13px; font-weight:bold; outline:none; margin-top:5px; color: black;">Undertekst her</div>
             </div>
         </div>
         <template x-for="(label, id) in labels" :key="id">
             <div class="label-wrap" :style="`left: ${label.x}px; top: ${label.y}px;`" x-init="makeLabelDraggable($el, id)">
-                <div class="label-box" contenteditable="true" x-text="label.name" @input="labels[id].name = $el.innerText" :style="`font-size: ${fontSize}px; font-family:sans-serif;`"></div>
+                <div class="label-box" contenteditable="true" x-text="label.name" @input="labels[id].name = $el.innerText" :style="`font-size: ${fontSize}px;`"></div>
                 <div style="background:#333; padding:4px; display:flex; gap:6px; margin-top:4px; border-radius:4px;">
-                    <button style="font-size:9px; padding:2px 6px;" @click="label.useLine = !label.useLine; drawLines(currentK)">Streg</button>
+                    <button style="font-size:9px; padding:2px 6px; background:#555;" @click="label.useLine = !label.useLine; drawLines(currentK)">Streg</button>
                     <input style="font-size:9px; width:70px; background:#000; color:#fff; border:1px solid #555;" x-model="labels[id].url" placeholder="Link...">
                 </div>
             </div>
         </template>
     </div>
 </div>
+<canvas id="export-canvas" width="1200" height="600" style="display:none;"></canvas>
 
 <script>
 function mapEditor() {
     return {
-        fontSize: 14, labels: {}, currentK: 1, g: null, linesG: null, zoomHandler: null,
-        daNames: { "Afghanistan":"Afghanistan","Syria":"Syrien","Sudan":"Sudan","South Sudan":"Sydsudan","Democratic Republic of the Congo":"Dem. Rep. Congo","Ukraine":"Ukraine","Yemen":"Yemen","Central African Republic":"Centralafrikanske Rep.","Ethiopia":"Etiopien","Gaza":"Gaza","Palestine":"Palæstina","Lebanon":"Libanon","Mali":"Mali","Myanmar":"Myanmar","Nigeria":"Nigeria","Somalia":"Somalia","Haiti":"Haiti","Greece":"Grækenland","Iraq":"Irak","Libya":"Libyen","Chad":"Tchad","Niger":"Niger","Burkina Faso":"Burkina Faso" },
+        fontSize: 14, labels: {}, currentK: 1, g: null, linesG: null, zoomHandler: null, searchQuery: '', path: null,
+        daNames: { 
+            "Afghanistan":"Afghanistan","Angola":"Angola","Albania":"Albanien","United Arab Emirates":"Forenede Arabiske Emirater","Argentina":"Argentina","Armenia":"Armenien","Antarctica":"Antarktis","Australia":"Australien","Austria":"Østrig","Azerbaijan":"Aserbajdsjan","Burundi":"Burundi","Belgium":"Belgien","Benin":"Benin","Burkina Faso":"Burkina Faso","Bangladesh":"Bangladesh","Bulgaria":"Bulgarien","The Bahamas":"Bahamas","Bosnia and Herzegovina":"Bosnien-Hercegovina","Belarus":"Hviderusland","Belize":"Belize","Bolivia":"Bolivia","Brazil":"Brasilien","Brunei":"Brunei","Bhutan":"Bhutan","Botswana":"Botswana","Central African Republic":"Centralafrikanske Rep.","Canada":"Canada","Switzerland":"Schweiz","Chile":"Chile","China":"Kina","Ivory Coast":"Elfenbenskysten","Cameroon":"Cameroun","Democratic Republic of the Congo":"Dem. Rep. Congo","Republic of the Congo":"Rep. Congo","Colombia":"Colombia","Costa Rica":"Costa Rica","Cuba":"Cuba","Cyprus":"Cypern","Czech Republic":"Tjekkiet","Germany":"Tyskland","Djibouti":"Djibouti","Denmark":"Danmark","Dominican Republic":"Dominikanske Rep.","Algeria":"Algeriet","Ecuador":"Ecuador","Egypt":"Egypten","Eritrea":"Eritrea","Spain":"Spanien","Estonia":"Estland","Ethiopia":"Etiopien","Finland":"Finland","Fiji":"Fiji","France":"Frankrig","Gabon":"Gabon","United Kingdom":"Storbritannien","Georgia":"Georgien","Ghana":"Ghana","Guinea":"Guinea","Gambia":"Gambia","Guinea Bissau":"Guinea-Bissau","Equatorial Guinea":"Ækvatorialguinea","Greece":"Grækenland","Greenland":"Grønland","Guatemala":"Guatemala","Guyana":"Guyana","Honduras":"Honduras","Croatia":"Kroatien","Haiti":"Haiti","Hungary":"Ungarn","Indonesia":"Indonesien","India":"Indien","Ireland":"Irland","Iran":"Iran","Iraq":"Irak","Iceland":"Island","Israel":"Israel","Italy":"Italien","Jamaica":"Jamaica","Jordan":"Jordan","Japan":"Japan","Kazakhstan":"Kasakhstan","Kenya":"Kenya","Kyrgyzstan":"Kirgisistan","Cambodia":"Cambodja","South Korea":"Sydkorea","Kuwait":"Kuwait","Laos":"Laos","Lebanon":"Libanon","Liberia":"Liberia","Libya":"Libyen","Sri Lanka":"Sri Lanka","Lesotho":"Lesotho","Lithuania":"Litauen","Luxembourg":"Luxembourg","Latvia":"Letland","Morocco":"Marokko","Moldova":"Moldova","Madagascar":"Madagaskar","Mexico":"Mexico","Macedonia":"Nordmakedonien","Mali":"Mali","Myanmar":"Myanmar","Montenegro":"Montenegro","Mongolia":"Mongoliet","Mozambique":"Mozambique","Mauritania":"Mauretanien","Malawi":"Malawi","Malaysia":"Malaysia","Namibia":"Namibia","New Caledonia":"Ny Kaledonien","Niger":"Niger","Nigeria":"Nigeria","Nicaragua":"Nicaragua","Netherlands":"Holland","Norway":"Norge","Nepal":"Nepal","New Zealand":"New Zealand","Oman":"Oman","Pakistan":"Pakistan","Panama":"Panama","Peru":"Peru","Philippines":"Filippinerne","Papua New Guinea":"Papua Ny Guinea","Poland":"Polen","Puerto Rico":"Puerto Rico","North Korea":"Nordkorea","Portugal":"Portugal","Paraguay":"Paraguay","Palestine":"Palæstina", "Gaza Strip":"Gaza", "West Bank":"Vestbredden", "Qatar":"Qatar","Romania":"Rumænien","Russia":"Rusland","Rwanda":"Rwanda","Western Sahara":"Vestsahara","Saudi Arabia":"Saudi-Arabien","Sudan":"Sudan","South Sudan":"Sydsudan","Senegal":"Senegal","Solomon Islands":"Salomonøerne","Sierra Leone":"Sierra Leone","El Salvador":"El Salvador","Somalia":"Somalia","Suriname":"Surinam","Slovakia":"Slovakiet","Slovenia":"Slovenien","Sweden":"Sverige","Swaziland":"Eswatini","Syria":"Syrien","Chad":"Tchad","Togo":"Togo","Thailand":"Thailand","Tajikistan":"Tadsjikistan","Turkmenistan":"Turkmenistan","East Timor":"Østtimor","Trinidad and Tobago":"Trinidad og Tobago","Tunisia":"Tunesien","Turkey":"Tyrkiet","Taiwan":"Taiwan","Tanzania":"Tanzania","Uganda":"Uganda","Ukraine":"Ukraine","Uruguay":"Uruguay","United States of America":"USA","Uzbekistan":"Usbekistan","Venezuela":"Venezuela","Vietnam":"Vietnam","Vanuatu":"Vanuatu","Yemen":"Yemen","South Africa":"Sydafrika","Zambia":"Zambia","Zimbabwe":"Zimbabwe" 
+        },
         init() {
             const svg = d3.select("#canvas");
             this.g = d3.select("#map-layer");
             this.linesG = d3.select("#lines-layer");
             const projection = d3.geoMercator().scale(195).translate([600, 420]);
-            const path = d3.geoPath().projection(projection);
+            this.path = d3.geoPath().projection(projection);
             this.zoomHandler = d3.zoom().scaleExtent([1, 40]).on("zoom", (e) => {
                 this.currentK = e.transform.k;
                 this.g.attr("transform", e.transform);
@@ -79,19 +120,35 @@ function mapEditor() {
             svg.call(this.zoomHandler);
             d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson").then(data => {
                 this.g.selectAll("path").data(data.features).enter().append("path")
-                    .attr("d", path).attr("class", "country")
-                    .on("click", (e, d) => {
-                        const el = d3.select(e.currentTarget);
-                        const active = !el.classed("active");
-                        el.classed("active", active);
-                        if(active) {
-                            const center = path.centroid(d);
-                            const displayName = this.daNames[d.properties.name] || d.properties.name;
-                            this.labels[d.id] = { name: displayName, anchorX: center[0], anchorY: center[1], worldX: center[0], worldY: center[1], useLine: true, url: "" };
-                        } else { delete this.labels[d.id]; }
-                        this.updateLabelPositions();
-                    });
+                    .attr("d", this.path).attr("class", "country")
+                    .attr("fill", "#f3ece6").attr("stroke", "#999").attr("stroke-width", "0.3")
+                    .on("click", (e, d) => this.toggleCountry(d3.select(e.currentTarget), d));
             });
+        },
+        toggleCountry(el, d) {
+            const active = !el.classed("active");
+            el.classed("active", active);
+            el.attr("fill", active ? "#e11a22" : "#f3ece6");
+            if(active) {
+                const center = this.path.centroid(d);
+                const name = this.daNames[d.properties.name] || d.properties.name;
+                this.labels[d.id] = { name: name, anchorX: center[0], anchorY: center[1], worldX: center[0], worldY: center[1], useLine: true, url: "", feature: d };
+            } else { delete this.labels[d.id]; }
+            this.updateLabelPositions();
+        },
+        removeById(id) {
+            this.g.selectAll("path").filter(d => d.id === id).classed("active", false).attr("fill", "#f3ece6");
+            delete this.labels[id];
+            this.updateLabelPositions();
+        },
+        selectCountry(val) {
+            const engName = Object.keys(this.daNames).find(key => this.daNames[key] === val);
+            if (!engName) return;
+            this.g.selectAll("path").filter(d => d.properties.name === engName).each((d, i, nodes) => {
+                const el = d3.select(nodes[i]);
+                if (!el.classed("active")) this.toggleCountry(el, d);
+            });
+            this.searchQuery = '';
         },
         updateLabelPositions() {
             const t = d3.zoomTransform(d3.select("#canvas").node());
@@ -110,8 +167,18 @@ function mapEditor() {
                 group.append("circle").attr("cx", l.anchorX).attr("cy", l.anchorY).attr("r", 5.5/k).attr("fill", "#e11a22").attr("stroke", "white").attr("stroke-width", 1.5/k);
             });
         },
+        zoomToFit() {
+            const activeFeatures = Object.values(this.labels).map(l => l.feature);
+            if (activeFeatures.length === 0) return;
+            const bounds = d3.geoBounds({type: "FeatureCollection", features: activeFeatures});
+            const [[x0, y0], [x1, y1]] = bounds.map(d3.geoMercator().scale(195).translate([600, 420]));
+            const width = Math.abs(x1 - x0), height = Math.abs(y1 - y0);
+            const midX = (x0 + x1) / 2, midY = (y0 + y1) / 2;
+            const scale = 0.6 / Math.max(width / 1200, height / 600);
+            d3.select("#canvas").transition().duration(750).call(this.zoomHandler.transform, d3.zoomIdentity.translate(600 - scale * midX, 300 - scale * midY).scale(scale));
+        },
         makeDraggable(el) {
-            d3.select(el).call(d3.drag().filter(e => e.target.className === 'drag-bar').on("drag", (e) => { el.style.left = e.x + "px"; el.style.top = e.y + "px"; }));
+            d3.select(el).call(d3.drag().filter(e => e.target.className === 'drag-bar').on("drag", (e) => { el.style.left = (e.x) + "px"; el.style.top = (e.y) + "px"; }));
         },
         makeLabelDraggable(el, id) {
             d3.select(el).call(d3.drag().on("drag", (e) => {
@@ -123,52 +190,52 @@ function mapEditor() {
         },
         zoom(f) { d3.select("#canvas").transition().call(this.zoomHandler.scaleBy, f); },
         resetView() { d3.select("#canvas").transition().call(this.zoomHandler.transform, d3.zoomIdentity); },
+        async exportPNG() {
+            const canvas = document.getElementById('export-canvas');
+            const ctx = canvas.getContext('2d');
+            const svg = document.getElementById('canvas');
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const img = new Image();
+            const url = URL.createObjectURL(new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'}));
+            img.onload = () => {
+                ctx.fillStyle = "#b5d5d5"; ctx.fillRect(0, 0, 1200, 600);
+                ctx.drawImage(img, 0, 0);
+                const box = document.getElementById('msf-box');
+                ctx.fillStyle = "white"; ctx.shadowBlur = 15; ctx.shadowColor = "rgba(0,0,0,0.2)";
+                ctx.fillRect(box.offsetLeft, box.offsetTop, 280, 80);
+                ctx.shadowBlur = 0; ctx.fillStyle = "#e11a22"; ctx.fillRect(box.offsetLeft, box.offsetTop, 8, 80);
+                ctx.fillStyle = "black"; ctx.font = "bold 18px sans-serif";
+                ctx.fillText(document.getElementById('h-in').innerText.toUpperCase(), box.offsetLeft + 20, box.offsetTop + 35);
+                ctx.font = "13px sans-serif"; ctx.fillText(document.getElementById('s-in').innerText, box.offsetLeft + 20, box.offsetTop + 60);
+                document.querySelectorAll('.label-wrap').forEach(lw => {
+                    const lBox = lw.querySelector('.label-box');
+                    const x = parseFloat(lw.style.left), y = parseFloat(lw.style.top);
+                    const w = lBox.offsetWidth, h = lBox.offsetHeight;
+                    ctx.fillStyle = "white"; ctx.shadowBlur = 10; ctx.fillRect(x - w/2, y - h/2, w, h);
+                    ctx.shadowBlur = 0; ctx.fillStyle = "#e11a22"; ctx.fillRect(x - w/2, y + h/2 - 3, w, 3);
+                    ctx.fillStyle = "black"; ctx.textAlign = "center"; ctx.font = `900 ${this.fontSize}px sans-serif`;
+                    ctx.fillText(lBox.innerText.toUpperCase(), x, y + (this.fontSize/3));
+                });
+                const link = document.createElement('a'); link.download = 'msf-kort.png'; link.href = canvas.toDataURL('image/png'); link.click();
+                URL.revokeObjectURL(url);
+            };
+            img.src = url;
+        },
         exportMap() {
             const t = d3.zoomTransform(d3.select("#canvas").node()), box = document.getElementById('msf-box');
             let labs = "", linesHtml = "";
             Object.values(this.labels).forEach(l => {
-                const pX = ((l.worldX * t.k + t.x) / 12);
-                const pY = ((l.worldY * t.k + t.y) / 6);
-                const isLink = l.url && l.url.trim() !== "";
-                const content = isLink ? `<a href="${l.url}" target="_blank" style="color:inherit;text-decoration:none;cursor:pointer;display:block;">${l.name}</a>` : l.name;
-                
-                labs += `<div style="position:absolute;left:${pX.toFixed(2)}%;top:${pY.toFixed(2)}%;transform:translate(-50%,-100%);background:#fff;padding:.4em .8em;box-shadow:3px 3px 6px rgba(0,0,0,.15);z-index:10;white-space:nowrap;font-family:sans-serif;font-weight:900;text-transform:uppercase;font-size:clamp(10px,${(this.fontSize/12).toFixed(2)}vw,22px);line-height:1;border-bottom:.3vw solid #e11a22;letter-spacing:.02em;pointer-events:auto;">${content}</div>`;
-                
+                const pX = ((l.worldX * t.k + t.x) / 12), pY = ((l.worldY * t.k + t.y) / 6);
+                const content = l.url && l.url.trim() !== "" ? `<a href="${l.url}" target="_blank" style="color:inherit;text-decoration:none;display:block;">${l.name}</a>` : l.name;
+                labs += `<div style="position:absolute;left:${pX.toFixed(2)}%;top:${pY.toFixed(2)}%;transform:translate(-50%,-50%);background:#fff;padding:.4em .8em;box-shadow:3px 3px 6px rgba(0,0,0,.15);z-index:10;white-space:nowrap;font-family:sans-serif;font-weight:900;text-transform:uppercase;font-size:clamp(10px,${(this.fontSize/12).toFixed(2)}vw,22px);line-height:1;border-bottom:.3vw solid #e11a22;letter-spacing:.02em;">${content}</div>`;
                 if(l.useLine) {
                     linesHtml += `<line x1="${l.anchorX}" y1="${l.anchorY}" x2="${l.worldX}" y2="${l.worldY}" stroke="#fff" stroke-width="${(5/t.k).toFixed(4)}" stroke-linecap="round"/><line x1="${l.anchorX}" y1="${l.anchorY}" x2="${l.worldX}" y2="${l.worldY}" stroke="#c2151b" stroke-width="${(3/t.k).toFixed(4)}" stroke-linecap="round"/><circle cx="${l.anchorX}" cy="${l.anchorY}" r="${(5.5/t.k).toFixed(3)}" fill="#e11a22" stroke="#fff" stroke-width="${(1.5/t.k).toFixed(4)}"/>`;
                 }
             });
             const h = document.getElementById('h-in').innerText, s = document.getElementById('s-in').innerText;
-            
-            const finalHtml = `<div class="msf-outer-wrap" style="width:100%;max-width:1200px;margin:0 auto;display:flex;flex-direction:column;font-family:sans-serif;">
-<style>
-    .msf-outer-wrap { position: relative; width: 100%; }
-    .msf-map-section { position:relative; width:100%; aspect-ratio:1200/600; background:#b5d5d5; overflow:hidden; }
-    .msf-label-overlay { position: absolute; inset: 0; pointer-events: none; }
-    .msf-hybrid-box { background:#fff; padding:20px; border-left:8px solid #e11a22; z-index:50; }
-    @media (min-width: 769px) {
-        .msf-hybrid-box { position: absolute; left:${(box.offsetLeft/12).toFixed(2)}%; top:${(box.offsetTop/6).toFixed(2)}%; width:280px; box-shadow:5px 5px 20px rgba(0,0,0,0.2); }
-    }
-    @media (max-width: 768px) {
-        .msf-hybrid-box { position: static; width: 100%; box-sizing: border-box; box-shadow: none; padding: 25px 20px; border-bottom: 2px solid #eee; }
-    }
-</style>
-<div class="msf-map-section">
-    <svg viewBox="${-t.x/t.k} ${-t.y/t.k} ${1200/t.k} ${600/t.k}" style="width:100%;height:100%;display:block;position:absolute;top:0;left:0;">
-        <style>.c{fill:#f3ece6;stroke:#999;stroke-width:${(0.4/t.k).toFixed(4)}}.a{fill:#e11a22!important}</style>
-        ${this.g.html().replace(/class="country active"/g, 'class="c a"').replace(/class="country"/g, 'class="c"').replace(/\s+/g,' ')}
-        <g>${linesHtml}</g>
-    </svg>
-    <div class="msf-label-overlay">${labs}</div>
-</div>
-<div class="msf-hybrid-box">
-    <p style="font-weight:900; font-size:20px; color:#000; line-height:1.1; margin:0; text-transform:uppercase;">${h}</p>
-    <p style="font-size:15px; margin-top:8px; color:#333; font-weight:700; margin-bottom:0;">${s}</p>
-</div>
-</div>`;
-
+            const finalHtml = `<div class="msf-outer-wrap" style="width:100%;max-width:1200px;margin:0 auto;display:flex;flex-direction:column;font-family:sans-serif;"><style>.msf-outer-wrap{position:relative;width:100%}.msf-map-section{position:relative;width:100%;aspect-ratio:1200/600;background:#b5d5d5;overflow:hidden}.msf-label-overlay{position:absolute;inset:0;pointer-events:none}.msf-hybrid-box{background:#fff;padding:20px;border-left:8px solid #e11a22;z-index:50}@media (min-width:769px){.msf-hybrid-box{position:absolute;left:${(box.offsetLeft/12).toFixed(2)}%;top:${(box.offsetTop/6).toFixed(2)}%;width:280px;box-shadow:5px 5px 20px rgba(0,0,0,0.2)}}@media (max-width:768px){.msf-hybrid-box{position:static;width:100%;box-sizing:border-box;padding:25px 20px;border-bottom:2px solid #eee}}</style><div class="msf-map-section"><svg viewBox="${-t.x/t.k} ${-t.y/t.k} ${1200/t.k} ${600/t.k}" style="width:100%;height:100%;display:block;position:absolute;top:0;left:0;"><style>.c{fill:#f3ece6;stroke:#999;stroke-width:${(0.4/t.k).toFixed(4)}}.a{fill:#e11a22!important}</style>${this.g.html().replace(/class="country active"/g, 'class="c a"').replace(/class="country"/g, 'class="c"').replace(/\s+/g,' ')}<g>${linesHtml}</g></svg><div class="msf-label-overlay">${labs}</div></div><div class="msf-hybrid-box"><p style="font-weight:900;font-size:20px;color:#000;line-height:1.1;margin:0;text-transform:uppercase;">${h}</p><p style="font-size:15px;margin-top:8px;color:#333;font-weight:700;margin-bottom:0;">${s}</p></div></div>`;
             navigator.clipboard.writeText(finalHtml.replace(/\s+/g,' '));
-            alert("Kode kopieret!");
+            alert("HTML-kode kopieret!");
         }
     }
 }
